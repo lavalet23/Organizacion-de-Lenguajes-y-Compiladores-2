@@ -21,6 +21,77 @@ function jsonResponse(array $data, int $status = 200): void
     exit;
 }
 
+function formatSymbolValue(mixed $value): string
+{
+    if ($value === null) {
+        return '-';
+    }
+
+    if (is_bool($value)) {
+        return $value ? 'true' : 'false';
+    }
+
+    if (is_scalar($value)) {
+        return (string)$value;
+    }
+
+    if (is_array($value)) {
+        // Caso referencia estilo: { "_ref": true, "name": "numeroBase" }
+        if (isset($value['_ref']) && $value['_ref'] === true && isset($value['name'])) {
+            return '&' . $value['name'];
+        }
+
+        // Caso arreglo interno estilo:
+        // { "_golampi_type": "[4]int32", "_values": [60,75,82,90] }
+        if (isset($value['_values']) && is_array($value['_values'])) {
+            return '[' . implode(', ', array_map('formatSymbolValue', $value['_values'])) . ']';
+        }
+
+        // Arreglo normal
+        $formatted = array_map('formatSymbolValue', $value);
+        return '[' . implode(', ', $formatted) . ']';
+    }
+
+    if (is_object($value)) {
+        $vars = get_object_vars($value);
+
+        // Si el objeto tiene forma de referencia
+        if (isset($vars['_ref']) && $vars['_ref'] === true && isset($vars['name'])) {
+            return '&' . $vars['name'];
+        }
+
+        // Si el objeto tiene forma de arreglo Golampi
+        if (isset($vars['_values']) && is_array($vars['_values'])) {
+            return '[' . implode(', ', array_map('formatSymbolValue', $vars['_values'])) . ']';
+        }
+
+        return json_encode($vars, JSON_UNESCAPED_UNICODE);
+    }
+
+    return (string)$value;
+}
+
+function normalizeSymbols(array $symbols): array
+{
+    $normalized = [];
+
+    foreach ($symbols as $symbol) {
+        if (!is_array($symbol)) {
+            continue;
+        }
+
+        $normalized[] = [
+            'id'    => $symbol['id'] ?? $symbol['name'] ?? '-',
+            'type'  => $symbol['type'] ?? '-',
+            'value' => formatSymbolValue($symbol['value'] ?? null),
+            'scope' => $symbol['scope'] ?? 'global',
+            'line'  => $symbol['line'] ?? '-',
+        ];
+    }
+
+    return $normalized;
+}
+
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         jsonResponse([
@@ -58,7 +129,6 @@ try {
         ], 400);
     }
 
-    // Crear archivo temporal para el InputStream
     $tmpFile = tempnam(sys_get_temp_dir(), 'golampi_');
     if ($tmpFile === false) {
         throw new Exception('No se pudo crear el archivo temporal.');
@@ -73,17 +143,17 @@ try {
         $tokens = new CommonTokenStream($lexer);
 
         $parser = new GolampiParser($tokens);
-
-        // Parseo principal
         $tree = $parser->program();
 
         $visitor = new InterpreterVisitor();
         $visitor->visit($tree);
 
+        $symbols = normalizeSymbols($visitor->getSymbols());
+
         jsonResponse([
             'success' => true,
             'output' => $visitor->getOutput(),
-            'symbols' => $visitor->getSymbols(),
+            'symbols' => $symbols,
             'errors' => [],
             'message' => 'Código ejecutado correctamente.'
         ]);
