@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intérprete Golampi</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Barra de título -->
+        <header class="header">
+            <h1>Intérprete/Compilador Golampi</h1>
+        </header>
+
+        <div class="main-content">
+            <!-- Editor de código -->
+            <section class="editor">
+                <div class="editor-header">
+                    <button class="btn">Nuevo Archivo</button>
+                    <button class="btn">Abrir Archivo</button>
+                    <button class="btn">Guardar Código</button>
+                </div>
+                <textarea id="code-editor" placeholder="Escribe tu código Golampi aquí..."></textarea>
+                <div class="editor-footer">
+                    <button onclick="runCode()">Ejecutar / Analizar</button>
+                    <button onclick="clearConsole()">Limpiar Consola</button>
+                </div>
+            </section>
+
+            <!-- Consola de salida -->
+            <section class="output">
+                <h3>Consola de Salida</h3>
+                <pre id="output"></pre>
+            </section>
+        </div>
+
+        <!-- Reportes -->
+        <section class="reports">
+            <button onclick="downloadResult()">Mostrar Resultado</button>
+            <button onclick="downloadErrors()">Mostrar Tabla de Errores</button>
+            <button onclick="downloadSymbolTable()">Mostrar Tabla de Símbolos</button>
+        </section>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
