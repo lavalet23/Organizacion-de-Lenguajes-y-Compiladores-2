@@ -3,46 +3,72 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Intérprete Golampi</title>
+    <title>Golampi IDE</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <!-- Barra de título -->
-        <header class="header">
-            <h1>Intérprete/Compilador Golampi</h1>
-        </header>
-
-        <div class="main-content">
-            <!-- Editor de código -->
-            <section class="editor">
-                <div class="editor-header">
-                    <button class="btn">Nuevo Archivo</button>
-                    <button class="btn">Abrir Archivo</button>
-                    <button class="btn">Guardar Código</button>
-                </div>
-                <textarea id="code-editor" placeholder="Escribe tu código Golampi aquí..."></textarea>
-                <div class="editor-footer">
-                    <button onclick="runCode()">Ejecutar / Analizar</button>
-                    <button onclick="clearConsole()">Limpiar Consola</button>
-                </div>
-            </section>
-
-            <!-- Consola de salida -->
-            <section class="output">
-                <h3>Consola de Salida</h3>
-                <pre id="output"></pre>
-            </section>
+    <header class="topbar">
+        <div>
+            <h1>Golampi IDE</h1>
+            <p>Proyecto 1 - Compiladores 2 - USAC</p>
         </div>
 
-        <!-- Reportes -->
-        <section class="reports">
-            <button onclick="downloadResult()">Mostrar Resultado</button>
-            <button onclick="downloadErrors()">Mostrar Tabla de Errores</button>
-            <button onclick="downloadSymbolTable()">Mostrar Tabla de Símbolos</button>
-        </section>
-    </div>
+        <div class="status-box">
+            <span id="status-dot" class="status-dot idle"></span>
+            <span id="status-text">Listo</span>
+        </div>
+    </header>
 
-    <script src="script.js"></script>
+    <main class="layout">
+        <section class="panel editor-panel">
+            <div class="panel-header">
+                <h2>Editor de Código</h2>
+                <div class="actions">
+                    <button id="run-btn" class="btn primary">▶ Ejecutar / Analizar</button>
+                    <button id="clear-btn" class="btn secondary">🧹 Limpiar</button>
+                    <button id="example-btn" class="btn secondary">📄 Cargar ejemplo</button>
+                </div>
+            </div>
+
+            <textarea id="code-editor" spellcheck="false">func main() {
+    fmt.Println("Hola desde frontend")
+}</textarea>
+
+            <div class="download-actions">
+                <button id="download-output-btn" class="btn success">⬇ Descargar salida</button>
+                <button id="download-errors-btn" class="btn danger">⬇ Descargar errores</button>
+                <button id="download-symbols-btn" class="btn info">⬇ Descargar símbolos</button>
+            </div>
+        </section>
+
+        <section class="right-column">
+            <section class="panel">
+                <div class="panel-header">
+                    <h2>Salida</h2>
+                </div>
+                <pre id="output" class="console">Aquí aparecerá la salida del programa.</pre>
+            </section>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <h2>Reporte de Errores</h2>
+                </div>
+                <div id="errors-panel" class="report empty">
+                    No hay errores para mostrar.
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <h2>Tabla de Símbolos</h2>
+                </div>
+                <div id="symbols-panel" class="report empty">
+                    No hay símbolos para mostrar.
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <script src="script.js?v=1001"></script>
 </body>
 </html>

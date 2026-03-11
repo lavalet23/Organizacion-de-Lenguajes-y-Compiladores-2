@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
+ini_set('display_errors', '0');
 
 require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/GolampiLexer.php';
@@ -25,6 +26,7 @@ try {
         jsonResponse([
             'success' => false,
             'errorType' => 'HTTP',
+            'errors' => ['Método no permitido. Usa POST.'],
             'message' => 'Método no permitido. Usa POST.'
         ], 405);
     }
@@ -32,10 +34,15 @@ try {
     $rawInput = file_get_contents('php://input');
     $data = json_decode($rawInput, true);
 
+    if (!is_array($data)) {
+        $data = $_POST;
+    }
+
     if (!is_array($data) || !isset($data['code'])) {
         jsonResponse([
             'success' => false,
             'errorType' => 'REQUEST',
+            'errors' => ['No se recibió el código fuente.'],
             'message' => 'No se recibió el código fuente.'
         ], 400);
     }
@@ -46,6 +53,7 @@ try {
         jsonResponse([
             'success' => false,
             'errorType' => 'REQUEST',
+            'errors' => ['El editor está vacío.'],
             'message' => 'El editor está vacío.'
         ], 400);
     }
@@ -76,6 +84,7 @@ try {
             'success' => true,
             'output' => $visitor->getOutput(),
             'symbols' => $visitor->getSymbols(),
+            'errors' => [],
             'message' => 'Código ejecutado correctamente.'
         ]);
     } finally {
@@ -88,6 +97,7 @@ try {
     jsonResponse([
         'success' => false,
         'errorType' => 'EXECUTION',
+        'errors' => [$e->getMessage()],
         'message' => $e->getMessage()
     ], 500);
 }
