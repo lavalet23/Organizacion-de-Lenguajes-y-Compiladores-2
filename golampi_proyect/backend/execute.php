@@ -21,6 +21,49 @@ function jsonResponse(array $data, int $status = 200): void
     exit;
 }
 
+function parseAntlrErrors(string $text): array
+{
+    $errors = [];
+    $lines = preg_split('/\r\n|\r|\n/', trim($text));
+
+    foreach ($lines as $lineText) {
+        $lineText = trim($lineText);
+
+        if ($lineText === '') {
+            continue;
+        }
+
+        // Formato típico de ANTLR:
+        // line 2:4 token recognition error at: '@'
+        // line 3:0 mismatched input '}' expecting ...
+        if (preg_match('/^line\s+(\d+):(\d+)\s+(.*)$/i', $lineText, $matches)) {
+            $line = (int)$matches[1];
+            $column = (int)$matches[2] + 1;
+            $message = trim($matches[3]);
+
+            $type = str_contains(strtolower($message), 'token recognition error')
+                ? 'Léxico'
+                : 'Sintáctico';
+
+            $errors[] = [
+                'type' => $type,
+                'message' => $message,
+                'line' => $line,
+                'column' => $column,
+            ];
+        } else {
+            $errors[] = [
+                'type' => 'Sintáctico',
+                'message' => $lineText,
+                'line' => '-',
+                'column' => '-',
+            ];
+        }
+    }
+
+    return $errors;
+}
+
 function inferTypeFromValue(mixed $value): string
 {
     if ($value === null) {
@@ -226,24 +269,59 @@ try {
     try {
         $input = InputStream::fromPath($tmpFile);
 
-        $lexer = new GolampiLexer($input);
-        $tokens = new CommonTokenStream($lexer);
+ob_start();
 
-        $parser = new GolampiParser($tokens);
-        $tree = $parser->program();
+$lexer = new GolampiLexer($input);
+$tokens = new CommonTokenStream($lexer);
 
-        $visitor = new InterpreterVisitor();
-        $visitor->visit($tree);
+$parser = new GolampiParser($tokens);
+$tree = $parser->program();
 
-        $symbols = normalizeSymbols($visitor->getSymbols());
+// Detectar errores sintácticos de ANTLR
+if ($parser->getNumberOfSyntaxErrors() > 0) {
+    $line = '-';
+    $column = '-';
 
-        jsonResponse([
-            'success' => true,
-            'output' => $visitor->getOutput(),
-            'symbols' => $symbols,
-            'errors' => [],
-            'message' => 'Código ejecutado correctamente.'
-        ]);
+    if (method_exists($parser, 'getCurrentToken')) {
+        $currentToken = $parser->getCurrentToken();
+
+        if ($currentToken !== null) {
+            if (method_exists($currentToken, 'getLine')) {
+                $line = $currentToken->getLine();
+            }
+            if (method_exists($currentToken, 'getCharPositionInLine')) {
+                $column = $currentToken->getCharPositionInLine() + 1;
+            }
+        }
+    }
+
+    jsonResponse([
+        'success' => false,
+        'errorType' => 'SINTACTICO',
+        'output' => [],
+        'symbols' => [],
+        'errors' => [[
+            'type' => 'Sintáctico',
+            'message' => 'Se encontraron errores sintácticos en el código.',
+            'line' => $line,
+            'column' => $column
+        ]],
+        'message' => 'Se encontraron errores sintácticos en el código.'
+    ], 400);
+}
+
+$visitor = new InterpreterVisitor();
+$visitor->visit($tree);
+
+$symbols = normalizeSymbols($visitor->getSymbols());
+
+jsonResponse([
+    'success' => true,
+    'output' => $visitor->getOutput(),
+    'symbols' => $symbols,
+    'errors' => [],
+    'message' => 'Código ejecutado correctamente.'
+]);
     } finally {
         if (file_exists($tmpFile)) {
             unlink($tmpFile);
@@ -251,10 +329,26 @@ try {
     }
 
 } catch (Throwable $e) {
+    $msg = $e->getMessage();
+    $type = 'Semántico';
+
+    if (stripos($msg, 'léxico') !== false || stripos($msg, 'lexico') !== false) {
+        $type = 'Léxico';
+    } elseif (stripos($msg, 'sintáctico') !== false || stripos($msg, 'sintactico') !== false) {
+        $type = 'Sintáctico';
+    }
+
     jsonResponse([
         'success' => false,
-        'errorType' => 'EXECUTION',
-        'errors' => [$e->getMessage()],
-        'message' => $e->getMessage()
-    ], 500);
+        'errorType' => strtoupper($type),
+        'output' => [],
+        'symbols' => [],
+        'errors' => [[
+            'type' => $type,
+            'message' => $msg,
+            'line' => '-',
+            'column' => '-'
+        ]],
+        'message' => $msg
+    ], 400);
 }

@@ -27,7 +27,7 @@ class InterpreterVisitor extends GolampiParserBaseVisitor
     private array $functions = [];
     private array $constants = [];
     private array $scopeLabels = ['global'];
-    private array $scopeKinds = ['global'];
+  
 
     public function getOutput(): array
     {
@@ -40,6 +40,7 @@ class InterpreterVisitor extends GolampiParserBaseVisitor
     }
     
 
+
     public function visitProgram($context)
 {
     foreach ($context->functionDecl() as $func) {
@@ -47,13 +48,13 @@ class InterpreterVisitor extends GolampiParserBaseVisitor
         $this->functions[$name] = $func;
 
         $this->addSymbolEntry(
-    $name,
-    'función',
-    '-',
-    'global',
-    $this->getLineFromContext($func),
-    $this->getColumnFromContext($func)
-);
+            $name,
+            'función',
+            '-',
+            'global',
+            $this->getLineFromContext($func),
+            $this->getColumnFromContext($func)
+        );
     }
 
     if (!isset($this->functions['main'])) {
@@ -654,9 +655,22 @@ public function visitElement($context)
     return [];
 }
 
-    private function enterScope(): void
+private function enterNamedScope(string $label): void
 {
-    $this->enterNamedScope('bloque', 'bloque');
+    $this->scopes[] = [];
+    $this->scopeLabels[] = $label;
+}
+
+private function exitNamedScope(): void
+{
+    array_pop($this->scopes);
+    array_pop($this->scopeLabels);
+}
+
+
+private function enterScope(): void
+{
+    $this->enterNamedScope('bloque');
 }
 
 private function exitScope(): void
@@ -664,13 +678,9 @@ private function exitScope(): void
     $this->exitNamedScope();
 }
 
-    private function declareVariable(
-    string $id,
-    string $type,
-    $value,
-    int|string $line = '-',
-    int|string $column = '-'
-): void {
+
+    private function declareVariable(string $id, string $type, $value, int|string $line = '-', int|string $column = '-'): void
+{
     $currentIndex = count($this->scopes) - 1;
 
     if (isset($this->scopes[$currentIndex][$id])) {
@@ -779,7 +789,7 @@ private function callUserFunction(string $name, array $args)
 
     $func = $this->functions[$name];
 
-    $this->enterNamedScope("función $name", 'función');
+    $this->enterNamedScope("función $name");
 
     // Asignar parámetros
     if ($func->paramList() !== null) {
@@ -1105,24 +1115,11 @@ private function getCurrentScopeLabel(): string
     return $this->scopeLabels[count($this->scopeLabels) - 1] ?? 'global';
 }
 
-private function enterNamedScope(string $label, string $kind): void
-{
-    $this->scopes[] = [];
-    $this->scopeLabels[] = $label;
-    $this->scopeKinds[] = $kind;
-}
-
-private function exitNamedScope(): void
-{
-    array_pop($this->scopes);
-    array_pop($this->scopeLabels);
-    array_pop($this->scopeKinds);
-}
 
 
 private function executeLoopBlock($blockContext): void
 {
-    $this->enterNamedScope('ciclo for', 'ciclo');
+    $this->enterNamedScope('ciclo for');
     try {
         foreach ($blockContext->stmt() as $stmt) {
             $this->visit($stmt);
