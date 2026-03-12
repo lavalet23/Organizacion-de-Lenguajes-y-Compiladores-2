@@ -26,6 +26,8 @@ class InterpreterVisitor extends GolampiParserBaseVisitor
     private array $symbolTable = [];
     private array $functions = [];
     private array $constants = [];
+    private array $scopeLabels = ['global'];
+    private array $scopeKinds = ['global'];
 
     public function getOutput(): array
     {
@@ -39,10 +41,19 @@ class InterpreterVisitor extends GolampiParserBaseVisitor
     
 
     public function visitProgram($context)
-    {
+{
     foreach ($context->functionDecl() as $func) {
         $name = $func->ID()->getText();
         $this->functions[$name] = $func;
+
+        $this->addSymbolEntry(
+    $name,
+    'función',
+    '-',
+    'global',
+    $this->getLineFromContext($func),
+    $this->getColumnFromContext($func)
+);
     }
 
     if (!isset($this->functions['main'])) {
@@ -50,7 +61,7 @@ class InterpreterVisitor extends GolampiParserBaseVisitor
     }
 
     return $this->callUserFunction('main', []);
-    }
+}
 
     public function visitFunctionDecl($context)
     {
@@ -98,7 +109,13 @@ class InterpreterVisitor extends GolampiParserBaseVisitor
             $value = $this->defaultValueFromType($context->typeSpec());
         }
 
-        $this->declareVariable($id, $type, $value);
+        $this->declareVariable(
+    $id,
+    $type,
+    $value,
+    $this->getLineFromContext($context),
+    $this->getColumnFromContext($context)
+);
     }
 
     return null;
@@ -129,7 +146,13 @@ class InterpreterVisitor extends GolampiParserBaseVisitor
 
     for ($i = 0; $i < count($ids); $i++) {
         $id = $ids[$i]->getText();
-        $this->declareVariable($id, 'inferido', $values[$i]);
+        $this->declareVariable(
+    $id,
+    'inferido',
+    $values[$i],
+    $this->getLineFromContext($context),
+    $this->getColumnFromContext($context)
+);
     }
 
     return null;
@@ -534,7 +557,7 @@ case '%':
             }
 
             try {
-                $this->visit($context->block());
+                $this->executeLoopBlock($context->block());
             } catch (ContinueSignal $e) {
                 // sigue a forPost
             } catch (BreakSignal $e) {
@@ -553,7 +576,7 @@ case '%':
     if ($context->expr() !== null) {
         while ($this->visit($context->expr())) {
             try {
-                $this->visit($context->block());
+                $this->executeLoopBlock($context->block());
             } catch (ContinueSignal $e) {
                 continue;
             } catch (BreakSignal $e) {
@@ -566,7 +589,7 @@ case '%':
     // for { ... }
     while (true) {
         try {
-            $this->visit($context->block());
+            $this->executeLoopBlock($context->block());
         } catch (ContinueSignal $e) {
             continue;
         } catch (BreakSignal $e) {
@@ -632,47 +655,48 @@ public function visitElement($context)
 }
 
     private function enterScope(): void
-        {
-            $this->scopes[] = [];
-        }
+{
+    $this->enterNamedScope('bloque', 'bloque');
+}
 
-    private function exitScope(): void
-        {
-            array_pop($this->scopes);
-        }
+private function exitScope(): void
+{
+    $this->exitNamedScope();
+}
 
-    private function declareVariable(string $id, string $type, $value): void
-        {
-            $currentIndex = count($this->scopes) - 1;
+    private function declareVariable(
+    string $id,
+    string $type,
+    $value,
+    int|string $line = '-',
+    int|string $column = '-'
+): void {
+    $currentIndex = count($this->scopes) - 1;
 
-            if (isset($this->scopes[$currentIndex][$id])) {
-                throw new Exception("Variable '$id' ya declarada en este ámbito.");
-            }
+    if (isset($this->scopes[$currentIndex][$id])) {
+        throw new Exception("Variable '$id' ya declarada en este ámbito.");
+    }
 
-            $this->scopes[$currentIndex][$id] = [
-                'type' => $type,
-                'value' => $value
-            ];
+    $this->scopes[$currentIndex][$id] = [
+        'type' => $type,
+        'value' => $value
+    ];
 
-            $this->symbolTable[] = [
-                'id' => $id,
-                'type' => $type,
-                'value' => $value,
-                'scope' => $currentIndex
-            ];
-        }
+    $this->addSymbolEntry($id, $type, $value, $this->getCurrentScopeLabel(), $line, $column);
+}
 
     private function assignVariable(string $id, $value): void
-        {
-            for ($i = count($this->scopes) - 1; $i >= 0; $i--) {
-                if (isset($this->scopes[$i][$id])) {
-                    $this->scopes[$i][$id]['value'] = $value;
-                    return;
-                }
-            }
-
-            throw new Exception("Variable '$id' no declarada.");
+{
+    for ($i = count($this->scopes) - 1; $i >= 0; $i--) {
+        if (isset($this->scopes[$i][$id])) {
+            $this->scopes[$i][$id]['value'] = $value;
+            $this->updateLastSymbolValue($id, $value);
+            return;
         }
+    }
+
+    throw new Exception("Variable '$id' no declarada.");
+}
 
     private function getVariable(string $id)
         {
@@ -755,7 +779,7 @@ private function callUserFunction(string $name, array $args)
 
     $func = $this->functions[$name];
 
-    $this->enterScope();
+    $this->enterNamedScope("función $name", 'función');
 
     // Asignar parámetros
     if ($func->paramList() !== null) {
@@ -774,7 +798,13 @@ private function callUserFunction(string $name, array $args)
         $paramType = 'inferido';
     }
 
-    $this->declareVariable($paramName, $paramType, $args[$i]);
+    $this->declareVariable(
+    $paramName,
+    $paramType,
+    $args[$i],
+    $this->getLineFromContext($params[$i]),
+    $this->getColumnFromContext($params[$i])
+);
 }
     } elseif (count($args) > 0) {
         throw new Exception("La función '$name' no recibe argumentos.");
@@ -787,7 +817,7 @@ private function callUserFunction(string $name, array $args)
         return $r->value;
     }
 
-    $this->exitScope();
+    $this->exitNamedScope();
     return null;
 }
 
@@ -983,7 +1013,13 @@ public function visitConstDecl($context)
     $type = $context->typeSpec()->getText();
     $value = $this->visit($context->expr());
 
-    $this->declareVariable($id, $type, $value);
+    $this->declareVariable(
+    $id,
+    $type,
+    $value,
+    $this->getLineFromContext($context),
+    $this->getColumnFromContext($context)
+);
     $this->constants[$id] = true;
 
     return null;
@@ -1017,6 +1053,83 @@ public function visitSwitchStmt($context)
     }
 
     return null;
+}
+
+private function addSymbolEntry(
+    string $id,
+    string $type,
+    $value,
+    int|string $scope,
+    int|string $line = '-',
+    int|string $column = '-'
+): void {
+    $this->symbolTable[] = [
+        'id' => $id,
+        'type' => $type,
+        'value' => $value,
+        'scope' => $scope,
+        'line' => $line,
+        'column' => $column
+    ];
+}
+
+private function updateLastSymbolValue(string $id, $value): void
+{
+    for ($i = count($this->symbolTable) - 1; $i >= 0; $i--) {
+        if (($this->symbolTable[$i]['id'] ?? null) === $id) {
+            $this->symbolTable[$i]['value'] = $value;
+            return;
+        }
+    }
+}
+
+private function getLineFromContext($context): int|string
+{
+    if (isset($context->start) && method_exists($context->start, 'getLine')) {
+        return $context->start->getLine();
+    }
+    return '-';
+}
+
+private function getColumnFromContext($context): int|string
+{
+    if (isset($context->start) && method_exists($context->start, 'getCharPositionInLine')) {
+        return $context->start->getCharPositionInLine() + 1;
+    }
+    return '-';
+}
+
+
+private function getCurrentScopeLabel(): string
+{
+    return $this->scopeLabels[count($this->scopeLabels) - 1] ?? 'global';
+}
+
+private function enterNamedScope(string $label, string $kind): void
+{
+    $this->scopes[] = [];
+    $this->scopeLabels[] = $label;
+    $this->scopeKinds[] = $kind;
+}
+
+private function exitNamedScope(): void
+{
+    array_pop($this->scopes);
+    array_pop($this->scopeLabels);
+    array_pop($this->scopeKinds);
+}
+
+
+private function executeLoopBlock($blockContext): void
+{
+    $this->enterNamedScope('ciclo for', 'ciclo');
+    try {
+        foreach ($blockContext->stmt() as $stmt) {
+            $this->visit($stmt);
+        }
+    } finally {
+        $this->exitNamedScope();
+    }
 }
 
 }

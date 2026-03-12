@@ -21,6 +21,93 @@ function jsonResponse(array $data, int $status = 200): void
     exit;
 }
 
+function inferTypeFromValue(mixed $value): string
+{
+    if ($value === null) {
+        return 'nil';
+    }
+
+    if (is_bool($value)) {
+        return 'bool';
+    }
+
+    if (is_int($value)) {
+        return 'int32';
+    }
+
+    if (is_float($value)) {
+        return 'float32';
+    }
+
+    if (is_string($value)) {
+        // Si quisieras distinguir rune/string habría que hacerlo desde el intérprete.
+        return 'string';
+    }
+
+    if (is_array($value)) {
+        // Referencia tipo { "_ref": true, "name": "numeroBase" }
+        if (isset($value['_ref']) && $value['_ref'] === true) {
+            return 'referencia';
+        }
+
+        // Arreglo interno tipo { "_golampi_type": "[4]int32", "_values": [...] }
+        if (isset($value['_golampi_type'])) {
+            return (string)$value['_golampi_type'];
+        }
+
+        if (isset($value['_values']) && is_array($value['_values'])) {
+            $count = count($value['_values']);
+            $innerType = 'inferido';
+
+            if ($count > 0) {
+                $innerType = inferTypeFromValue($value['_values'][0]);
+            }
+
+            return '[' . $count . ']' . $innerType;
+        }
+
+        return 'array';
+    }
+
+    if (is_object($value)) {
+        $vars = get_object_vars($value);
+
+        if (isset($vars['_ref']) && $vars['_ref'] === true) {
+            return 'referencia';
+        }
+
+        if (isset($vars['_golampi_type'])) {
+            return (string)$vars['_golampi_type'];
+        }
+
+        if (isset($vars['_values']) && is_array($vars['_values'])) {
+            $count = count($vars['_values']);
+            $innerType = 'inferido';
+
+            if ($count > 0) {
+                $innerType = inferTypeFromValue($vars['_values'][0]);
+            }
+
+            return '[' . $count . ']' . $innerType;
+        }
+
+        return 'objeto';
+    }
+
+    return 'desconocido';
+}
+
+function normalizeSymbolType(mixed $type, mixed $value): string
+{
+    $type = $type ?? '-';
+
+    if ($type === 'inferido') {
+        return inferTypeFromValue($value) . ' (inferido)';
+    }
+
+    return (string)$type;
+}
+
 function formatSymbolValue(mixed $value): string
 {
     if ($value === null) {
@@ -47,7 +134,6 @@ function formatSymbolValue(mixed $value): string
             return '[' . implode(', ', array_map('formatSymbolValue', $value['_values'])) . ']';
         }
 
-        // Arreglo normal
         $formatted = array_map('formatSymbolValue', $value);
         return '[' . implode(', ', $formatted) . ']';
     }
@@ -55,12 +141,10 @@ function formatSymbolValue(mixed $value): string
     if (is_object($value)) {
         $vars = get_object_vars($value);
 
-        // Si el objeto tiene forma de referencia
         if (isset($vars['_ref']) && $vars['_ref'] === true && isset($vars['name'])) {
             return '&' . $vars['name'];
         }
 
-        // Si el objeto tiene forma de arreglo Golampi
         if (isset($vars['_values']) && is_array($vars['_values'])) {
             return '[' . implode(', ', array_map('formatSymbolValue', $vars['_values'])) . ']';
         }
@@ -80,13 +164,16 @@ function normalizeSymbols(array $symbols): array
             continue;
         }
 
+        $rawValue = $symbol['value'] ?? null;
+
         $normalized[] = [
-            'id'    => $symbol['id'] ?? $symbol['name'] ?? '-',
-            'type'  => $symbol['type'] ?? '-',
-            'value' => formatSymbolValue($symbol['value'] ?? null),
-            'scope' => $symbol['scope'] ?? 'global',
-            'line'  => $symbol['line'] ?? '-',
-        ];
+    'id'     => $symbol['id'] ?? $symbol['name'] ?? '-',
+    'type'   => normalizeSymbolType($symbol['type'] ?? '-', $rawValue),
+    'value'  => formatSymbolValue($rawValue),
+    'scope'  => $symbol['scope'] ?? 'global',
+    'line'   => $symbol['line'] ?? '-',
+    'column' => $symbol['column'] ?? '-',
+];
     }
 
     return $normalized;

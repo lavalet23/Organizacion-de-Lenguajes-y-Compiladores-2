@@ -211,6 +211,7 @@ function renderSymbols(symbols) {
                         <th>Valor</th>
                         <th>Ámbito</th>
                         <th>Línea</th>
+                        <th>Columna</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -232,6 +233,7 @@ function renderSymbols(symbols) {
                     <td class="symbol-value">${value}</td>
                     <td class="symbol-scope">${scope}</td>
                     <td>${line}</td>
+                    <td>${escapeHtml(String(symbol.column ?? "-"))}</td>
                 </tr>
             `;
         } else {
